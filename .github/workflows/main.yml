@@ -39,19 +39,34 @@ jobs:
       # Run as a mlflow project
       - name: Run mlflow project
         run: |
-          mlflow run MLproject --env-manager=local 
+          # 1. Jalankan mlflow dan simpan output terminal ke file log.txt
+          mlflow run MLproject --env-manager=local > log.txt 2>&1
+          
+          # Tampilkan isi log agar kamu tetap bisa melihat prosesnya di GitHub
+          cat log.txt
+          
+          # 2. Ambil ID unik menggunakan grep (mencari teks 'Run (ID ...')
+          # Kita mencari pola 32 karakter alfanumerik
+          RUN_ID=$(grep -oP "Run \(ID '\K[a-f0-9]{32}" log.txt | head -n 1)
+          
+          # 3. Simpan ke Environment agar bisa dipakai di step Build Docker Model
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+          echo "ID yang berhasil ditangkap: $RUN_ID"
       
       # Get latest run_id
-      - name: Get latest MLflow run_id
-        run: |
-          RUN_ID=$(ls -td mlruns/0/*/ | head -n 1 | cut -d'/' -f3)
-          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          echo "Latest run_id: $RUN_ID"
+      # - name: Get latest MLflow run_id
+      #   run: |
+      #     RUN_ID=$(ls -td mlruns/0/*/ | head -n 1 | cut -d'/' -f3)
+      #     echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+      #     echo "Latest run_id: $RUN_ID"
           
       # Build Docker Model
       - name: Build Docker Model
         run: |
-          mlflow models build-docker --model-uri "runs:/$RUN_ID/model" --name "cc" 
+          # mlflow models build-docker --model-uri "runs:/$RUN_ID/model" --name "cc" 
+          
+          # Sekarang $RUN_ID tidak akan kosong lagi karena sudah diambil dari log di atas
+          mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "cc"
 
       # Login to Docker Hub
       - name: Log in to Docker Hub
