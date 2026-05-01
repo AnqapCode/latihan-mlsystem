@@ -33,18 +33,32 @@ jobs:
         run: |
           mlflow run MLproject --env-manager=local
       
+      # Step 1: Ambil run_id terbaru
       - name: Get latest MLflow run_id
+        # Kita berikan ID pada step ini agar outputnya bisa dipanggil
+        id: get_id
         run: |
-          # Mengambil ID asli dengan membuang folder 'models' dan 'meta.yaml'
-          RUN_ID=$(ls -t mlruns/0 | grep -vE "meta.yaml|models" | head -n 1)
-          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          echo "Ditemukan Run ID: $RUN_ID"
+          # Ambil folder terbaru di mlruns/0 yang bukan sistem MLflow
+          ID=$(ls -t mlruns/0 | grep -vE "meta.yaml|models" | head -n 1)
           
+          # Validasi jika kosong
+          if [ -z "$ID" ]; then
+            echo "Error: Run ID tidak ditemukan di mlruns/0"
+            exit 1
+          fi
+          
+          # Simpan ke GITHUB_ENV (untuk shell) dan set-output (untuk konteks GitHub)
+          echo "RUN_ID=$ID" >> $GITHUB_ENV
+          echo "run_id=$ID" >> $GITHUB_OUTPUT
+          echo "Berhasil mendapatkan Run ID: $ID"
+
+      # Step 2: Build Docker Model
       - name: Build Docker Model
         run: |
-          # Kita beri nama image "cc" agar konsisten dengan step tag nanti
+          # Gunakan variabel yang sudah kita simpan di GITHUB_ENV
+          # Tambahkan satu garis miring (/) setelah 'runs:'
           mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "cc"
-
+          
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
