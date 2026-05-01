@@ -2,12 +2,13 @@ name: CI/CD MLflow
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 env:
-  # Sesuaikan path agar menunjuk ke file di dalam folder MLproject
   CSV_URL: "MLproject/train_pca.csv"
   TARGET_VAR: "Credit_Score"
 
@@ -16,57 +17,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE
       - uses: actions/checkout@v3
 
+      # Setup Python 3.12.7
       - name: Set up Python 3.12.7
         uses: actions/setup-python@v4
         with:
           python-version: "3.12.7"
       
+      # Check Env Variables
+      - name: Check Env
+        run: |
+          echo $CSV_URL
+      # Install mlflow
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install mlflow pandas scikit-learn joblib
-
-      # Perhatikan: kita menjalankan folder "MLproject"
+          pip install mlflow  
+          
+      # Run as a mlflow project
       - name: Run mlflow project
         run: |
-          mlflow run MLproject --env-manager=local
+          mlflow run MLproject --env-manager=local 
       
-      # Step 1: Ambil run_id terbaru
+      # Get latest run_id
       - name: Get latest MLflow run_id
-        # Kita berikan ID pada step ini agar outputnya bisa dipanggil
-        id: get_id
         run: |
-          # Ambil folder terbaru di mlruns/0 yang bukan sistem MLflow
-          ID=$(ls -t mlruns/0 | grep -vE "meta.yaml|models" | head -n 1)
+          RUN_ID=$(ls -td mlruns/0/*/ | head -n 1 | cut -d'/' -f3)
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+          echo "Latest run_id: $RUN_ID"
           
-          # Validasi jika kosong
-          if [ -z "$ID" ]; then
-            echo "Error: Run ID tidak ditemukan di mlruns/0"
-            exit 1
-          fi
-          
-          # Simpan ke GITHUB_ENV (untuk shell) dan set-output (untuk konteks GitHub)
-          echo "RUN_ID=$ID" >> $GITHUB_ENV
-          echo "run_id=$ID" >> $GITHUB_OUTPUT
-          echo "Berhasil mendapatkan Run ID: $ID"
-
-      # Step 2: Build Docker Model
+      # Build Docker Model
       - name: Build Docker Model
         run: |
-          # Gunakan variabel yang sudah kita simpan di GITHUB_ENV
-          # Tambahkan satu garis miring (/) setelah 'runs:'
-          mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "cc"
-          
+          mlflow models build-docker --model-uri "runs:/$RUN_ID/model" --name "cc" 
+
+      # Login to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      - name: Tag and Push Docker Image
+      # Tag the Docker image
+      - name: Tag Docker Image
         run: |
-          # Menggunakan variabel rahasia untuk username agar lebih aman
           docker tag cc ${{ secrets.DOCKER_HUB_USERNAME }}/cc:latest
+
+      # Push Docker image to Docker Hub
+      - name: Push Docker Image
+        run: |
           docker push ${{ secrets.DOCKER_HUB_USERNAME }}/cc:latest
