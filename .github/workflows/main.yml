@@ -40,7 +40,8 @@ jobs:
       - name: Run mlflow project
         run: |
           # mlflow run MLproject --env-manager=local
-          mlflow run . --env-manager=local
+          mlflow run . --env-manager=local > run_output.txt 2>&1
+          cat run_output.txt
       
       # Get latest run_id
       - name: Get latest MLflow run_id
@@ -49,19 +50,14 @@ jobs:
           # echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           # echo "Latest run_id: $RUN_ID"
           
-          # 1. Cari folder mlruns secara rekursif
-          MLRUNS_DIR=$(find . -name "mlruns" -type d -prune | head -n 1)
-          echo "Ditemukan folder mlruns di: $MLRUNS_DIR"
-
-          # 2. Cari folder eksperimen terbaru di dalamnya (biasanya folder '0' atau folder angka lainnya)
-          # Kita mencari folder dengan nama 32 karakter alfanumerik (format ID MLflow)
-          RUN_ID=$(find $MLRUNS_DIR -maxdepth 2 -type d -regextype posix-extended -regex ".*/[a-f0-9]{32}" -printf '%T@ %p\n' | sort -rn | head -n 1 | awk '{print $2}' | xargs basename)
-
+          # 2. Ambil Run ID dari log menggunakan grep
+          # MLflow biasanya mencetak: "Run with ID 'xxxxxxxxxxxx' completed successfully"
+          # Kita ambil string 32 karakter di dalam tanda petik tersebut
+          RUN_ID=$(grep -oP 'Run with ID \K[a-f0-9]{32}' run_output.txt | head -n 1)
+          
           if [ -z "$RUN_ID" ]; then
-            echo "Error: Run ID tidak ditemukan! Pastikan 'mlflow run' sudah berhasil dijalankan sebelumnya."
-            # Opsional: tampilkan struktur folder untuk debugging
-            ls -R
-            exit 1
+            echo "Gagal mengambil ID dari log, mencoba cara cadangan via folder..."
+            RUN_ID=$(ls -t mlruns/0 | grep -v "meta.yaml" | head -n 1)
           fi
 
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
@@ -72,7 +68,7 @@ jobs:
         run: |
           # mlflow models build-docker --model-uri "runs:/$RUN_ID/model" --name "cc" 
 
-          # Menggunakan ${{ env.RUN_ID }} memastikan GitHub mengambil nilai dari GITHUB_ENV
+          
           mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "cc"
       
       # Login to Docker Hub
