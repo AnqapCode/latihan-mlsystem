@@ -49,18 +49,23 @@ jobs:
           # echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           # echo "Latest run_id: $RUN_ID"
           
-          # Perintah ini mencari folder di mlruns/0/ yang namanya terdiri dari angka/huruf (ID)
-          # grep -E memastikan kita hanya mengambil folder dengan nama 32 karakter (format standar MLflow)
-          # Jika tidak ketemu, kita ambil folder terbaru yang bukan 'meta.yaml'
-          RUN_ID=$(ls -t mlruns/0 | grep -vE "meta.yaml|models" | head -n 1)
-          
+          # 1. Cari folder mlruns secara rekursif
+          MLRUNS_DIR=$(find . -name "mlruns" -type d -prune | head -n 1)
+          echo "Ditemukan folder mlruns di: $MLRUNS_DIR"
+
+          # 2. Cari folder eksperimen terbaru di dalamnya (biasanya folder '0' atau folder angka lainnya)
+          # Kita mencari folder dengan nama 32 karakter alfanumerik (format ID MLflow)
+          RUN_ID=$(find $MLRUNS_DIR -maxdepth 2 -type d -regextype posix-extended -regex ".*/[a-f0-9]{32}" -printf '%T@ %p\n' | sort -rn | head -n 1 | awk '{print $2}' | xargs basename)
+
           if [ -z "$RUN_ID" ]; then
-            echo "Error: Run ID tidak ditemukan!"
+            echo "Error: Run ID tidak ditemukan! Pastikan 'mlflow run' sudah berhasil dijalankan sebelumnya."
+            # Opsional: tampilkan struktur folder untuk debugging
+            ls -R
             exit 1
           fi
-          
+
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          echo "Berhasil mendapatkan Run ID asli: $RUN_ID"
+          echo "Berhasil mendapatkan Run ID: $RUN_ID"
           
       # Build Docker Model
       - name: Build Docker Model
