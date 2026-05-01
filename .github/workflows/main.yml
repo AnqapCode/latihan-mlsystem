@@ -2,13 +2,12 @@ name: CI/CD MLflow
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
+  # Sesuaikan path agar menunjuk ke file di dalam folder MLproject
   CSV_URL: "MLproject/train_pca.csv"
   TARGET_VAR: "Credit_Score"
 
@@ -17,58 +16,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE
       - uses: actions/checkout@v3
 
-      # Setup Python 3.12.7
       - name: Set up Python 3.12.7
         uses: actions/setup-python@v4
         with:
           python-version: "3.12.7"
       
-      # Check Env Variables
-      - name: Check Env
-        run: |
-          echo $CSV_URL
-          
-      # Install mlflow
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install mlflow 
-          
-      # Run as a mlflow project
+          pip install mlflow pandas scikit-learn joblib
+
+      # Perhatikan: kita menjalankan folder "MLproject"
       - name: Run mlflow project
         run: |
           mlflow run MLproject --env-manager=local
       
-      # Get latest run_id
       - name: Get latest MLflow run_id
         run: |
-          RUN_ID=$(ls -td mlruns/0/*/ | head -n 1 | cut -d'/' -f3)
+          # Mengambil ID asli dengan membuang folder 'models' dan 'meta.yaml'
+          RUN_ID=$(ls -t mlruns/0 | grep -vE "meta.yaml|models" | head -n 1)
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          echo "Latest run_id: $RUN_ID"
+          echo "Ditemukan Run ID: $RUN_ID"
           
-      # Build Docker Model
       - name: Build Docker Model
-        env:
-          RUN_ID: ${{ steps.train_model.outputs.run_id }} 
         run: |
-          mlflow models build-docker --model-uri "runs:/$RUN_ID/model" --name "my-docker-hub-user/model-name"
+          # Kita beri nama image "cc" agar konsisten dengan step tag nanti
+          mlflow models build-docker --model-uri "runs:/${{ env.RUN_ID }}/model" --name "cc"
 
-      # Login to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      # Tag the Docker image
-      - name: Tag Docker Image
+      - name: Tag and Push Docker Image
         run: |
+          # Menggunakan variabel rahasia untuk username agar lebih aman
           docker tag cc ${{ secrets.DOCKER_HUB_USERNAME }}/cc:latest
-          
-      # Push Docker image to Docker Hub
-      - name: Push Docker Image
-        run: |
           docker push ${{ secrets.DOCKER_HUB_USERNAME }}/cc:latest
